@@ -125,7 +125,7 @@ jobs:
           echo "need_run=false" >> "$GITHUB_OUTPUT"
           echo "${{env.ignore_patterns}}"
           echo "======"
-          IFS=$'\n' read -r -d '' -a ignorable <<< "${{env.ignore_patterns}}"
+          ignorable=${{env.ignore_patterns}}
           echo "${ignorable[@]}"
           echo "${#ignorable[@]}"
           echo "======"
