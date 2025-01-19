@@ -119,11 +119,13 @@ jobs:
             "^benchmarks/.*"
           )
           # Test array of paths against the patterns of changes we can ignore.
+          echo "need_run=false" >> "$GITHUB_OUTPUT"
           for path in "${paths[@]}"; do
             for pattern in "${ignorable[@]}"; do
-              # If a path matches a pattern, it can be ignored. Go to next path.
+              # The path matched a pattern => can be ignored. Go to next path.
               [[ $path =~ $pattern ]] && continue 2
             done
+            # None of the patterns matched this path.
             echo "need_run=true" >> "$GITHUB_OUTPUT"
+            break
           done
-          echo "need_run=false" >> "$GITHUB_OUTPUT"
