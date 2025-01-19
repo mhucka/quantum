@@ -325,7 +325,7 @@ jobs:
   Bazel_tests:
     if: needs.Decision.outputs.need_run == 'true'
     name: Test the rest of TFQ
-    needs: [Decision, Setup]
+    needs: [Decision, Setup, Build_wheel]
     runs-on: ubuntu-20.04
     steps:
       - name: Check out a copy of the TFQ git repository
