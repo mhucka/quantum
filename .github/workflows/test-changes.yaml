@@ -37,7 +37,7 @@ on:
         type: string
         default: "3.10.15"
 
-      reload_python_caches:
+      reload_python_cache:
         description: "Force-reload the Python caches"
         type: boolean
         default: false
@@ -85,6 +85,23 @@ concurrency:
   group: ${{github.workflow}}-${{github.event.pull_request.number||github.ref}}
 
 jobs:
+  # Summary of basic strategy:
+  #   1. Job "Decision" quickly determines if the rest of the workflow needs
+  #      to run. A run is needed if (a) this was triggered by a merge_queue
+  #      event, (b) the event changed files that we don't ignore, or (c) it
+  #      was invoked manually via workflow_dispatch.
+  #
+  #   2. If the workflow needs to proceed, job Setup installs Python
+  #      dependencies and caches them.
+  #
+  #   3. Job Build then builds the Python wheel for TFQ. As a side-effect,
+  #      Bazel caches some build artifacts, potentially saving time in
+  #      the remaining jobs as well as in future runs of the workflow.
+  #
+  #   4. Jobs Wheel_tests, Bazel_tests, and Tutorial_tests can all run in
+  #      parallel after Build finishes. Bazel_tests also uses and updates the
+  #      Bazel cache artifacts, potentially saving time in future runs.
+
   Decision:
     runs-on: ubuntu-24.04
     outputs:
@@ -186,7 +203,7 @@ jobs:
 
       - if: >-
           steps.check_cache.outputs.cache-hit == 'true' &&
-          inputs.reload_python_caches == 'true'
+          inputs.reload_python_cache == 'true'
         name: Clear the Python cache
         continue-on-error: true
         env:
@@ -198,7 +215,7 @@ jobs:
 
       - if: >-
           steps.check_cache.outputs.cache-hit != 'true' ||
-          inputs.reload_python_caches == 'true'
+          inputs.reload_python_cache == 'true'
         name: Set up our Python cache
         uses: actions/cache@v4
         id: restore_cache
@@ -208,7 +225,7 @@ jobs:
 
       - if: >-
           steps.check_cache.outputs.cache-hit != 'true' ||
-          inputs.reload_python_caches == 'true'
+          inputs.reload_python_cache == 'true'
         name: Install TFQ Python dependencies and cache them
         run: |
           pip install --upgrade pip setuptools wheel
@@ -257,7 +274,7 @@ jobs:
         run: |
           set -x -e
           printf "Y\n" | ./configure.sh
-          bazel build release:build_pip_package 2>&1 | tee bazel-build-release.log
+          bazel build release:build_pip_package 2>&1 | tee bazel-build.log
           mkdir -p ./wheel
           ./bazel-bin/release/build_pip_package "$(pwd)/wheel" 2>&1 | tee python-bdist.log
           pip install -U ./wheel/*.whl
@@ -274,12 +291,12 @@ jobs:
         name: Make Bazel artifacts downloadable for analysis
         uses: actions/upload-artifact@v4
         with:
-          name: bazel-build-wheel-${{github.run_id}}
-          retention-days: 7
+          name: bazel-build-artifacts-${{github.run_id}}
+          retention-days: 14
           compression-level: 9
           include-hidden-files: true
           path: |
-            bazel-build-release.log
+            bazel-build.log
             python-bdist.log
             /home/runner/.bazel/execroot/__main__/bazel-out/
             !/home/runner/.bazel/execroot/__main__/bazel-out/**/*.so
@@ -357,7 +374,7 @@ jobs:
           printf "Y\n" | ./configure.sh
           bazel test //tensorflow_quantum/... 2>&1 | tee bazel-tests.log
 
-      - if: failure() || github.event_name == 'workflow_dispatch'
+      - if: failure() || needs.Setup.outputs.debug == 'true'
         name: Make Bazel artifacts downloadable for analysis
         uses: actions/upload-artifact@v4
         with:
@@ -373,7 +390,7 @@ jobs:
             !/home/runner/.bazel/execroot/__main__/bazel-out/**/_objs
             !/home/runner/.bazel/execroot/__main__/bazel-out/**/_solib_k8
 
-  tutorial_tests:
+  Tutorial_tests:
     if: needs.Decision.outputs.need_run == 'true'
     name: Run tutorial tests
     runs-on: ubuntu-20.04
@@ -413,3 +430,68 @@ jobs:
             echo "{$examples_output}"
             exit 64;
           fi
+
+  # This debug part is purposefully both a separate job and conditioned to run
+  # after setup and build_wheel, in order that it can get the restored cache
+  # contents and show what those look like. That's most useful when debugging.
+  Debug:
+    if: failure() || needs.setup.outputs.debug == 'true'
+    name: Print debugging info
+    needs: [Decision, Setup, Build_wheel, Bazel_tests]
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out a copy of the TFQ git repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{inputs.py_version || env.py_version}}
+
+      - name: Restore our Python cache
+        uses: actions/cache@v4
+        with:
+          key: ${{needs.Setup.outputs.python_cache_key}}
+          path: ${{needs.Setup.outputs.python_cache_paths}}
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@0.12.0
+        with:
+          bazelrc: ${{env.bazelrc_additions}}
+          bazelisk-cache: true
+          external-cache: true
+          repository-cache: true
+          disk-cache: ${{needs.Setup.outputs.bazel_cache_key}}
+
+      - name: Print debugging info
+        run: |
+          echo ""
+          echo "::group::Contents of $(pwd)"
+          ls -la
+          echo "::endgroup::"
+
+          echo "::group::Pip info"
+          pip --version
+          pip list
+          echo "::endgroup::"
+
+          echo "::group::Python installation"
+          pyversion="$(python --version | awk '{print $2}')"
+          ls -l /opt/hostedtoolcache/{.,Python,Python/"$pyversion"/x64/bin}
+          echo "::endgroup::"
+
+          echo "::group::Bazel info"
+          bazel --version
+          ls -la /home/runner/.cache
+          if [[ -e /home/runner/.bazel ]]; then
+            ls -la /home/runner/.bazel
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Contents of /home/runner/.bazelrc"
+          cat /home/runner/.bazelrc
+          echo "::endgroup::"
+
+          echo "::group::Environment variables"
+          env
+          echo "::endgroup::"
