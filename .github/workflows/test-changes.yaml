@@ -89,8 +89,8 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       need_run: >-
-        ${{github.event_name == 'merge_queue'}} ||
-        ${{steps.files.outputs.have_changes == 'true'}}
+        ${{github.event_name == 'merge_queue' ||
+           steps.files.outputs.have_changes == 'true'}}
     steps:
       - if: github.event_name != 'merge_queue'
         name: Determine files changed by this ${{github.event_name}} event
