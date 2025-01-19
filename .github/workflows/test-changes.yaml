@@ -75,6 +75,8 @@ jobs:
     steps:
       - name: Test files changed by this ${{github.event_name}}
         id: changes
+        env:
+          GH_TOKEN: ${{github.token}}
         run: |
           # This approach is faster than checking out a copy of the repo and
           # using an action like dorny/paths-filter to test for changes.
