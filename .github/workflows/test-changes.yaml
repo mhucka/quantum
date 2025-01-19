@@ -121,6 +121,7 @@ jobs:
             read -r -a paths <<< \
               "$(gh api $commits_url --jq '.files[].filename')"
           fi
+          echo "$paths[@]"
           # Test array of paths against the patterns of changes we can ignore.
           echo "need_run=false" >> "$GITHUB_OUTPUT"
           echo "${{env.ignore_patterns}}"
