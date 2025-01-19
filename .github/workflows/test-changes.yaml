@@ -108,8 +108,7 @@ jobs:
           event="${{github.event_name}}"
           if [[ "$event" == "pull_request" ]]; then
             pr_url=${{github.event.pull_request.url}}
-            IFS=$'\n' read -r -a paths <<< \
-              "$(gh pr view $pr_url --json files --jq '.files | .[].path')"
+            paths=($(gh pr view $pr_url --json files --jq '.files | .[].path'))
           else
             if [[ "$event" == "push" ]]; then
               sha=${{github.sha}}
@@ -118,16 +117,18 @@ jobs:
               sha=${{inputs.sha}}
             fi
             commits_url="/repos/${{github.repository}}/commits/$sha"
-            IFS=$'\n' read -r -a paths <<< \
-              "$(gh api $commits_url --jq '.files[].filename')"
+            paths=($(gh api $commits_url --jq '.files[].filename'))
           fi
-          echo "$paths"
-          echo "${#paths}"
+          echo "${paths[@]}"
+          echo "${#paths[@]}"
           # Test array of paths against the patterns of changes we can ignore.
           echo "need_run=false" >> "$GITHUB_OUTPUT"
           echo "${{env.ignore_patterns}}"
+          echo "======"
           IFS=$'\n' read -r -d '' -a ignorable <<< "${{env.ignore_patterns}}"
           echo "${ignorable[@]}"
+          echo "${#ignorable[@]}"
+          echo "======"
           for path in "${paths[@]}"; do
             for pattern in "${ignorable[@]}"; do
               # The path matched a pattern => can be ignored. Go to next path.
