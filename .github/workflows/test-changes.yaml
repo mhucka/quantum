@@ -112,7 +112,7 @@ jobs:
           fi
           # Test array of paths against the patterns of changes we can ignore.
           # Default to no-changes if every path matches at least one pattern.
-          echo "have_changes=false" >> "$GITHUB_OUTPUT"
+          echo "have_changes='false'" >> "$GITHUB_OUTPUT"
           ignorable=(${{env.ignore_patterns}})
           for path in "${paths[@]}"; do
             for pattern in "${ignorable[@]}"; do
@@ -120,7 +120,7 @@ jobs:
               [[ $path =~ $pattern ]] && continue 2
             done
             # None of the patterns matched this path.
-            echo "have_changes=true" >> "$GITHUB_OUTPUT"
+            echo "have_changes='true'" >> "$GITHUB_OUTPUT"
             break
           done
 
