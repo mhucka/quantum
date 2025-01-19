@@ -16,17 +16,22 @@ on:
     branches:
       - main
 
-  push:
-    branches:
-      - main
-
   merge_group:
     types:
       - checks_requested
 
+  push:
+    branches:
+      - main
+
   # Allow manual invocation, with options that can be useful for debugging.
   workflow_dispatch:
     inputs:
+      sha:
+        description: "Commit hash:"
+        type: string
+        required: true
+
       py_version:
         description: "Python version:"
         type: string
@@ -71,18 +76,38 @@ jobs:
   inspection:
     runs-on: ubuntu-24.04
     outputs:
-      have_changes: ${{steps.changes.outputs.source_or_build_files}}
+      need_run: >-
+        ${{steps.check_event.outputs.need_run == 'true'}} ||
+        ${{steps.check_files.outputs.need_run == 'true'}}
     steps:
-      - name: Test files changed by this ${{github.event_name}}
-        id: changes
+      - if: github.event_name == 'merge_queue'
+        id: check_event
+        run: |
+          echo "need_run=true" >> "$GITHUB_OUTPUT"
+
+      - if: github.event_name != 'merge_queue'
+        name: Determine files changed by this ${{github.event_name}}
+        id: check_files
         env:
           GH_TOKEN: ${{github.token}}
+        # Note that this approach doesn't need to check out a copy of the repo.
         run: |
           set -x
-          # This approach is faster than checking out a copy of the repo and
-          # using an action like dorny/paths-filter to test for changes.
-          pr_url=${{github.event.pull_request.url}}
-          paths=($(gh pr view --json files $pr_url --jq '.files | .[].path'))
+          # Get an array of paths changed in this workflow trigger event.
+          event="${{github.event_name}}"
+          if [[ "$event" == "pull_request" ]]; then
+            pr_url=${{github.event.pull_request.url}}
+            paths=( $(gh pr view --json files $pr_url --jq '.files | .[].path') )
+          else
+            if [[ "$event" == "push" ]]; then
+              sha=${{github.sha}}
+            else
+              # There's no event sha for manual runs, so we rely on user input.
+              sha=${{inputs.sha}}
+            fi
+            commits_url="/repos/${{github.repository}}/commits/$sha"
+            paths=( $(gh api $commits_url --jq '.files[].filename') )
+          fi
           declare -a ignorable=(
             ".*\.md$"
             ".*\.jpg$"
@@ -93,11 +118,12 @@ jobs:
             "^\.github/problem-matchers/.*"
             "^benchmarks/.*"
           )
+          # Test array of paths against the patterns of changes we can ignore.
           for path in "${paths[@]}"; do
             for pattern in "${ignorable[@]}"; do
               # If a path matches a pattern, it can be ignored. Go to next path.
               [[ $path =~ $pattern ]] && continue 2
             done
-            echo "have_changes=true" >> "$GITHUB_OUTPUT"
+            echo "need_run=true" >> "$GITHUB_OUTPUT"
           done
-          echo "have_changes=false" >> "$GITHUB_OUTPUT"
+          echo "need_run=false" >> "$GITHUB_OUTPUT"
