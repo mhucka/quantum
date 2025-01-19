@@ -221,7 +221,7 @@ jobs:
           pip install seaborn==0.12.0
           pip install -q git+https://github.com/tensorflow/docs
 
-  build_wheel:
+  Build_wheel:
     if: needs.Decision.outputs.need_run == 'true'
     name: Build Python wheel
     needs: [Decision, Setup]
@@ -287,10 +287,10 @@ jobs:
             !/home/runner/.bazel/execroot/__main__/bazel-out/**/_objs
             !/home/runner/.bazel/execroot/__main__/bazel-out/**/_solib_k8
 
-  wheel_tests:
+  Wheel_tests:
     if: needs.Decision.outputs.need_run == 'true'
     name: Test the Python wheel
-    needs: [Decision, Setup]
+    needs: [Decision, Setup, Build_wheel]
     runs-on: ubuntu-20.04
     steps:
       - name: Check out a copy of the TFQ git repository
@@ -322,7 +322,7 @@ jobs:
           set -x -e
           ./scripts/run_example.sh
 
-  bazel_tests:
+  Bazel_tests:
     if: needs.Decision.outputs.need_run == 'true'
     name: Test the rest of TFQ
     needs: [Decision, Setup]
@@ -377,7 +377,7 @@ jobs:
     if: needs.Decision.outputs.need_run == 'true'
     name: Run tutorial tests
     runs-on: ubuntu-20.04
-    needs: [Decision, Setup]
+    needs: [Decision, Setup, Build_wheel]
     steps:
       - name: Check out a copy of the TFQ git repository
         uses: actions/checkout@v4
