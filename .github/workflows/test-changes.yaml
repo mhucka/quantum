@@ -28,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       sha:
-        description: "Commit hash:"
+        description: "SHA of commit to run against:"
         type: string
         required: true
 
@@ -123,3 +123,97 @@ jobs:
             echo "have_changes=true" >> "$GITHUB_OUTPUT"
             break
           done
+
+  setup:
+    if: needs.decision.outputs.need_run == 'true'
+    needs: decision
+    runs-on: ubuntu-20.04
+    timeout-minutes: 15
+    outputs:
+      python_cache_key: ${{steps.parameters.outputs.python_cache_key}}
+      python_cache_paths: ${{steps.parameters.outputs.python_cache_paths}}
+      bazel_cache_key: ${{steps.parameters.outputs.bazel_cache_key}}
+      debug: ${{steps.parameters.outputs.debug}}
+    steps:
+      - name: Check out a copy of the TFQ git repository
+        uses: actions/checkout@v4
+
+        # Note: setup-python has a cache facility, but we don't use it here
+        # because we want to cache more things than setup-python does.
+      - name: Set up Python ${{inputs.py_version || env.py_version}}
+        id: python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{inputs.py_version || env.py_version}}
+
+      - name: Set various parameters
+        id: parameters
+        run: |
+          # Including __init__.py here lets us detect changes to __version__.
+          hash=${{hashFiles('WORKSPACE', '**/BUILD', '**/*.bzl', '**/.patch',
+                  'requirements.txt', 'tensorflow_quantum/__init__.py')}}
+          key="${{github.workflow_ref}}-$hash"
+          echo "python_cache_key=$key" >> "$GITHUB_OUTPUT"
+          # The paths used for actions/cache need to be on separate lines.
+          # shellcheck disable=SC2005
+          {
+          echo 'python_cache_paths<<EOF'
+          echo "$(pip cache dir)"
+          echo "${{env.pythonLocation}}"
+          echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+          # Make the Bazel disk cache specific to the version of this workflow.
+          echo "bazel_cache_key=${{github.workflow_ref}}" >> "$GITHUB_OUTPUT"
+          # If the user re-runs the workflow with debugging turned on via the
+          # GitHub GUI (instead of using workflow_dispatch), include the debug
+          # info they'd get if they did use workflow_dispatch.
+          if [[ "${{inputs.debug}}" == "true" || "${{runner.debug}}" == "1" ]]; then
+            echo "debug=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "debug=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Test if the cache already exists
+        uses: actions/cache@v4
+        id: check_cache
+        with:
+          lookup-only: true
+          key: ${{steps.parameters.outputs.python_cache_key}}
+          path: ${{steps.parameters.outputs.python_cache_paths}}
+
+      - if: >-
+          steps.check_cache.outputs.cache-hit == 'true' &&
+          inputs.reload_python_caches == 'true'
+        name: Clear the Python cache
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        run: |
+          key="${{steps.parameters.outputs.python_cache_key}}"
+          gh extension install actions/gh-actions-cache
+          gh actions-cache delete "$key" --confirm
+
+      - if: >-
+          steps.check_cache.outputs.cache-hit != 'true' ||
+          inputs.reload_python_caches == 'true'
+        name: Set up our Python cache
+        uses: actions/cache@v4
+        id: restore_cache
+        with:
+          key: ${{steps.parameters.outputs.python_cache_key}}
+          path: ${{steps.parameters.outputs.python_cache_paths}}
+
+      - if: >-
+          steps.check_cache.outputs.cache-hit != 'true' ||
+          inputs.reload_python_caches == 'true'
+        name: Install TFQ Python dependencies and cache them
+        run: |
+          pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
+          # The next ones are for validating tutorials
+          pip install jupyter
+          pip install nbclient==0.6.5 jupyter-client==6.1.12 ipython==7.22.0
+          pip install ipykernel==5.1.1
+          pip install gym==0.24.1
+          pip install seaborn==0.12.0
+          pip install -q git+https://github.com/tensorflow/docs
