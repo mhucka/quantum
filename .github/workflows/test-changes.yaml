@@ -126,7 +126,6 @@ jobs:
           echo "${{env.ignore_patterns}}"
           echo "======"
           ignorable=(${{env.ignore_patterns}})
-          ignorable=("${{env.ignore_patterns}}")
           echo "=====a"
           set +e
           echo "${ignorable[@]}"
