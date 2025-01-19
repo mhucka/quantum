@@ -85,43 +85,34 @@ concurrency:
   group: ${{github.workflow}}-${{github.event.pull_request.number||github.ref}}
 
 jobs:
-  inspection:
+  decision:
     runs-on: ubuntu-24.04
     outputs:
       need_run: >-
-        ${{steps.check_event.outputs.need_run == 'true'}} ||
-        ${{steps.check_files.outputs.need_run == 'true'}}
+        ${{github.event_name == 'merge_queue'}} ||
+        ${{steps.files.outputs.have_changes == 'true'}}
     steps:
-      - if: github.event_name == 'merge_queue'
-        id: check_event
-        run: |
-          echo "need_run=true" >> "$GITHUB_OUTPUT"
-
       - if: github.event_name != 'merge_queue'
-        name: Determine files changed by this ${{github.event_name}}
-        id: check_files
+        name: Determine files changed by this ${{github.event_name}} event
+        id: files
         env:
           GH_TOKEN: ${{github.token}}
         # Note that this approach doesn't need to check out a copy of the repo.
         run: |
           set -x
           # Get an array of paths changed in this workflow trigger event.
-          event="${{github.event_name}}"
-          if [[ "$event" == "pull_request" ]]; then
-            pr_url=${{github.event.pull_request.url}}
-            paths=($(gh pr view $pr_url --json files --jq '.files | .[].path'))
+          if [[ "${{github.event_name}}" == "pull_request" ]]; then
+            url=${{github.event.pull_request.url}}
+            paths=($(gh pr view $url --json files --jq '.files | .[].path'))
           else
-            if [[ "$event" == "push" ]]; then
-              sha=${{github.sha}}
-            else
-              # There's no event sha for manual runs, so we rely on user input.
-              sha=${{inputs.sha}}
-            fi
-            commits_url="/repos/${{github.repository}}/commits/$sha"
-            paths=($(gh api $commits_url --jq '.files[].filename'))
+            # There's no event sha for manual runs, so we rely on user input.
+            sha=${{github.sha || inputs.sha}}
+            url="/repos/${{github.repository}}/commits/$sha"
+            paths=($(gh api $url --jq '.files[].filename'))
           fi
           # Test array of paths against the patterns of changes we can ignore.
-          echo "need_run=false" >> "$GITHUB_OUTPUT"
+          # Default to no-changes if every path matches at least one pattern.
+          echo "have_changes=false" >> "$GITHUB_OUTPUT"
           ignorable=(${{env.ignore_patterns}})
           for path in "${paths[@]}"; do
             for pattern in "${ignorable[@]}"; do
@@ -129,6 +120,6 @@ jobs:
               [[ $path =~ $pattern ]] && continue 2
             done
             # None of the patterns matched this path.
-            echo "need_run=true" >> "$GITHUB_OUTPUT"
+            echo "have_changes=true" >> "$GITHUB_OUTPUT"
             break
           done
