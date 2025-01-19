@@ -85,7 +85,7 @@ concurrency:
   group: ${{github.workflow}}-${{github.event.pull_request.number||github.ref}}
 
 jobs:
-  decision:
+  Decision:
     runs-on: ubuntu-24.04
     outputs:
       need_run: >-
@@ -100,6 +100,7 @@ jobs:
         # Note that this approach doesn't need to check out a copy of the repo.
         run: |
           set -x
+          # shellcheck disable=SC2207
           # Get an array of paths changed in this workflow trigger event.
           if [[ "${{github.event_name}}" == "pull_request" ]]; then
             url=${{github.event.pull_request.url}}
@@ -124,15 +125,9 @@ jobs:
             break
           done
 
-  test:
-    runs-on: ubuntu-20.04
-    needs: decision
-    steps:
-      - run: echo ${{needs.decision.outputs.need_run}}
-
-  setup:
-    if: needs.decision.outputs.need_run == 'true'
-    needs: decision
+  Setup:
+    if: needs.Decision.outputs.need_run == 'true'
+    needs: Decision
     runs-on: ubuntu-20.04
     timeout-minutes: 15
     outputs:
@@ -155,13 +150,15 @@ jobs:
       - name: Set various parameters
         id: parameters
         run: |
+          #
           # Including __init__.py here lets us detect changes to __version__.
           hash=${{hashFiles('WORKSPACE', '**/BUILD', '**/*.bzl', '**/.patch',
                   'requirements.txt', 'tensorflow_quantum/__init__.py')}}
           key="${{github.workflow_ref}}-$hash"
+          # shellcheck disable=SC2129
           echo "python_cache_key=$key" >> "$GITHUB_OUTPUT"
-          # The paths used for actions/cache need to be on separate lines.
           # shellcheck disable=SC2005
+          # The paths used for actions/cache need to be on separate lines.
           {
           echo 'python_cache_paths<<EOF'
           echo "$(pip cache dir)"
@@ -223,3 +220,196 @@ jobs:
           pip install gym==0.24.1
           pip install seaborn==0.12.0
           pip install -q git+https://github.com/tensorflow/docs
+
+  build_wheel:
+    if: needs.Decision.outputs.need_run == 'true'
+    name: Build Python wheel
+    needs: [Decision, Setup]
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out a copy of the TFQ git repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{inputs.py_version || env.py_version}}
+
+      - name: Restore our Python cache
+        uses: actions/cache@v4
+        with:
+          key: ${{needs.Setup.outputs.python_cache_key}}
+          path: ${{needs.Setup.outputs.python_cache_paths}}
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@0.12.0
+        # Note that we don't need to set the Bazel version to use, because it
+        # knows to use what's in the .bazel-version file.
+        with:
+          bazelrc: ${{env.bazelrc_additions}}
+          # The next 3 caches can be shared between all workflow runs.
+          bazelisk-cache: true
+          external-cache: true
+          repository-cache: true
+          disk-cache: ${{needs.Setup.outputs.bazel_cache_key}}
+
+      - name: Build Python wheel for TFQ
+        run: |
+          set -x -e
+          printf "Y\n" | ./configure.sh
+          bazel build release:build_pip_package 2>&1 | tee bazel-build-release.log
+          mkdir -p ./wheel
+          ./bazel-bin/release/build_pip_package "$(pwd)/wheel" 2>&1 | tee python-bdist.log
+          pip install -U ./wheel/*.whl
+
+      - name: Save the wheel for the tutorial tests
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{github.run_id}}
+          path: ./wheel
+          compression-level: 0
+          overwrite: true
+
+      - if: failure() || needs.Setup.outputs.debug == 'true'
+        name: Make Bazel artifacts downloadable for analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazel-build-wheel-${{github.run_id}}
+          retention-days: 7
+          compression-level: 9
+          include-hidden-files: true
+          path: |
+            bazel-build-release.log
+            python-bdist.log
+            /home/runner/.bazel/execroot/__main__/bazel-out/
+            !/home/runner/.bazel/execroot/__main__/bazel-out/**/*.so
+            !/home/runner/.bazel/execroot/__main__/bazel-out/**/*.o
+            !/home/runner/.bazel/execroot/__main__/bazel-out/**/_objs
+            !/home/runner/.bazel/execroot/__main__/bazel-out/**/_solib_k8
+
+  wheel_tests:
+    if: needs.Decision.outputs.need_run == 'true'
+    name: Test the Python wheel
+    needs: [Decision, Setup]
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out a copy of the TFQ git repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{inputs.py_version || env.py_version}}
+
+      - name: Restore our Python cache
+        uses: actions/cache@v4
+        with:
+          key: ${{needs.Setup.outputs.python_cache_key}}
+          path: ${{needs.Setup.outputs.python_cache_paths}}
+
+      - name: Get the Python wheel we built
+        uses: actions/download-artifact@v4
+        with:
+          name: wheel-${{github.run_id}}
+          path: ./wheel
+
+      - name: Install the Python wheel
+        run: |
+          pip install ./wheel/*.whl
+
+      - name: Test the wheel
+        run: |
+          set -x -e
+          ./scripts/run_example.sh
+
+  bazel_tests:
+    if: needs.Decision.outputs.need_run == 'true'
+    name: Test the rest of TFQ
+    needs: [Decision, Setup]
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out a copy of the TFQ git repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{inputs.py_version || env.py_version}}
+
+      - name: Restore our Python cache
+        uses: actions/cache@v4
+        with:
+          key: ${{needs.Setup.outputs.python_cache_key}}
+          path: ${{needs.Setup.outputs.python_cache_paths}}
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@0.12.0
+        with:
+          bazelrc: ${{env.bazelrc_additions}}
+          bazelisk-cache: true
+          external-cache: true
+          repository-cache: true
+          disk-cache: ${{needs.Setup.outputs.bazel_cache_key}}
+
+      - name: Run all Bazel tests
+        run: |
+          set -x -e
+          printf "Y\n" | ./configure.sh
+          bazel test //tensorflow_quantum/... 2>&1 | tee bazel-tests.log
+
+      - if: failure() || github.event_name == 'workflow_dispatch'
+        name: Make Bazel artifacts downloadable for analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazel-tests-${{github.run_id}}
+          retention-days: 7
+          compression-level: 9
+          include-hidden-files: true
+          path: |
+            bazel-tests.log
+            /home/runner/.bazel/execroot/__main__/bazel-out/
+            !/home/runner/.bazel/execroot/__main__/bazel-out/**/*.so
+            !/home/runner/.bazel/execroot/__main__/bazel-out/**/*.o
+            !/home/runner/.bazel/execroot/__main__/bazel-out/**/_objs
+            !/home/runner/.bazel/execroot/__main__/bazel-out/**/_solib_k8
+
+  tutorial_tests:
+    if: needs.Decision.outputs.need_run == 'true'
+    name: Run tutorial tests
+    runs-on: ubuntu-20.04
+    needs: [Decision, Setup]
+    steps:
+      - name: Check out a copy of the TFQ git repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{inputs.py_version || env.py_version}}
+
+      - name: Restore our Python cache
+        uses: actions/cache@v4
+        with:
+          key: ${{needs.Setup.outputs.python_cache_key}}
+          path: ${{needs.Setup.outputs.python_cache_paths}}
+
+      - name: Get the Python wheel we built
+        uses: actions/download-artifact@v4
+        with:
+          name: wheel-${{github.run_id}}
+          path: ./wheel
+
+      - name: Install the Python wheel
+        run: |
+          pip install ./wheel/*.whl
+
+      - name: Test the tutorials
+        run: |
+          cd ..
+          examples_output=$(python3 quantum/scripts/test_tutorials.py)
+          exit_code=$?
+          if [ "$exit_code" != "0" ]; then
+            echo "Tutorials failed to run to completion:"
+            echo "{$examples_output}"
+            exit 64;
+          fi
