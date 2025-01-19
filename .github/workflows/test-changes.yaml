@@ -124,6 +124,7 @@ jobs:
           # Test array of paths against the patterns of changes we can ignore.
           echo "need_run=false" >> "$GITHUB_OUTPUT"
           IFS=$'\n' read -r -d '' -a ignorable <<< "${{env.ignore_patterns}}"
+          echo "${ignorable[@]}"
           for path in "${paths[@]}"; do
             for pattern in "${ignorable[@]}"; do
               # The path matched a pattern => can be ignored. Go to next path.
