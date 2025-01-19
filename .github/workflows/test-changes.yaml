@@ -78,10 +78,11 @@ jobs:
         env:
           GH_TOKEN: ${{github.token}}
         run: |
+          set -x
           # This approach is faster than checking out a copy of the repo and
           # using an action like dorny/paths-filter to test for changes.
-          pr_num=${{github.event.number}}
-          paths=($(gh pr view --json files $pr_num --jq '.files | .[].path'))
+          pr_url=${{github.event.pull_request.url}}
+          paths=($(gh pr view --json files $pr_url --jq '.files | .[].path'))
           declare -a ignorable=(
             ".*\.md$"
             ".*\.jpg$"
