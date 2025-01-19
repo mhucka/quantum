@@ -1,0 +1,100 @@
+# Summary: TFQ continuous integration workflow for building & testing TFQ.
+#
+# This workflow compiles TFQ and runs test cases to verify everything works.
+# It triggers on certain events such as pull requests and merge-queue merges,
+# tries to be as efficient as possible by caching the Python environment and
+# Bazel artifacts, and can be invoked manually via the "Run workflow" button at
+# https://github.com/tensorflow/quantum/actions/workflows/ci-build-checks.yaml
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+name: CI build checks
+run-name: Continuous integration build & test
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches:
+      - main
+
+  push:
+    branches:
+      - main
+
+  merge_group:
+    types:
+      - checks_requested
+
+  # Allow manual invocation, with options that can be useful for debugging.
+  workflow_dispatch:
+    inputs:
+      py_version:
+        description: "Python version:"
+        type: string
+        default: "3.10.15"
+
+      reload_python_caches:
+        description: "Force-reload the Python caches"
+        type: boolean
+        default: false
+
+      debug:
+        description: "Print additional workflow info"
+        type: boolean
+        default: false
+
+env:
+  # Default Python version to use. Important: give it a full x.y.z number.
+  py_version: '3.10.15'
+
+  # Additional .bazelrc options to use.
+  bazelrc_additions: |
+    common -c opt
+    common --announce_rc
+    common --color=no
+    common --experimental_repo_remote_exec
+    common --remote_upload_local_results=false
+    common --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=1"
+    common --cxxopt="-std=c++17"
+    common --cxxopt="-msse2"
+    common --cxxopt="-msse3"
+    common --cxxopt="-msse4"
+    build --verbose_failures
+    test --test_output=errors
+    test --test_timeout=1000
+
+concurrency:
+  # Cancel any previously-started but still active runs on the same branch.
+  cancel-in-progress: true
+  group: ${{github.workflow}}-${{github.event.pull_request.number||github.ref}}
+
+jobs:
+  inspection:
+    runs-on: ubuntu-24.04
+    outputs:
+      have_changes: ${{steps.changes.outputs.source_or_build_files}}
+    steps:
+      - name: Test files changed by this ${{github.event_name}}
+        id: changes
+        run: |
+          # This approach is faster than checking out a copy of the repo and
+          # using an action like dorny/paths-filter to test for changes.
+          pr_num=${{github.event.number}}
+          paths=($(gh pr view --json files $pr_num --jq '.files | .[].path'))
+          declare -a ignorable=(
+            ".*\.md$"
+            ".*\.jpg$"
+            ".*\.png$"
+            "^\.gitignore"
+            "^\.pylintrc"
+            "^\.yamllint.yaml"
+            "^\.github/problem-matchers/.*"
+            "^benchmarks/.*"
+          )
+          for path in "${paths[@]}"; do
+            for pattern in "${ignorable[@]}"; do
+              # If a path matches a pattern, it can be ignored. Go to next path.
+              [[ $path =~ $pattern ]] && continue 2
+            done
+            echo "have_changes=true" >> "$GITHUB_OUTPUT"
+          done
+          echo "have_changes=false" >> "$GITHUB_OUTPUT"
