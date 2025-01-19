@@ -67,6 +67,16 @@ env:
     test --test_output=errors
     test --test_timeout=1000
 
+  ignorable_changes: |-
+    - .*\.md$
+    - .*\.jpg$
+    - .*\.png$
+    - ^\.gitignore
+    - ^\.pylintrc
+    - ^\.yamllint.yaml
+    - ^\.github/problem-matchers/.*
+    - ^benchmarks/.*
+
 concurrency:
   # Cancel any previously-started but still active runs on the same branch.
   cancel-in-progress: true
@@ -97,7 +107,8 @@ jobs:
           event="${{github.event_name}}"
           if [[ "$event" == "pull_request" ]]; then
             pr_url=${{github.event.pull_request.url}}
-            paths=( $(gh pr view --json files $pr_url --jq '.files | .[].path') )
+            read -r -a paths <<< \
+              "$(gh pr view $pr_url --json files --jq '.files | .[].path')"
           else
             if [[ "$event" == "push" ]]; then
               sha=${{github.sha}}
@@ -106,20 +117,12 @@ jobs:
               sha=${{inputs.sha}}
             fi
             commits_url="/repos/${{github.repository}}/commits/$sha"
-            paths=( $(gh api $commits_url --jq '.files[].filename') )
+            read -r -a paths <<< \
+              "$(gh api $commits_url --jq '.files[].filename')"
           fi
-          declare -a ignorable=(
-            ".*\.md$"
-            ".*\.jpg$"
-            ".*\.png$"
-            "^\.gitignore"
-            "^\.pylintrc"
-            "^\.yamllint.yaml"
-            "^\.github/problem-matchers/.*"
-            "^benchmarks/.*"
-          )
           # Test array of paths against the patterns of changes we can ignore.
           echo "need_run=false" >> "$GITHUB_OUTPUT"
+          IFS=$'\n' read -r -d '' -a ignorable <<< "${{env.ignorable_regex}}"
           for path in "${paths[@]}"; do
             for pattern in "${ignorable[@]}"; do
               # The path matched a pattern => can be ignored. Go to next path.
