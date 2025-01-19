@@ -68,15 +68,16 @@ env:
     test --test_timeout=1000
 
   # Note: these regexes are Bash regex syntax, NOT path glob syntax.
+  # Also, do not put dashes in front of the values.
   ignore_patterns: |-
-    - .*\.md$
-    - .*\.jpg$
-    - .*\.png$
-    - ^\.gitignore
-    - ^\.pylintrc
-    - ^\.yamllint.yaml
-    - ^\.github/problem-matchers/.*
-    - ^benchmarks/.*
+    .*\.md$
+    .*\.jpg$
+    .*\.png$
+    ^\.gitignore
+    ^\.pylintrc
+    ^\.yamllint.yaml
+    ^\.github/problem-matchers/.*
+    ^benchmarks/.*
 
 concurrency:
   # Cancel any previously-started but still active runs on the same branch.
@@ -119,8 +120,6 @@ jobs:
             commits_url="/repos/${{github.repository}}/commits/$sha"
             paths=($(gh api $commits_url --jq '.files[].filename'))
           fi
-          echo "${paths[@]}"
-          echo "${#paths[@]}"
           # Test array of paths against the patterns of changes we can ignore.
           echo "need_run=false" >> "$GITHUB_OUTPUT"
           echo "${{env.ignore_patterns}}"
