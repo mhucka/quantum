@@ -1,0 +1,97 @@
+# Summary: TFQ nightly full build & test.
+#
+# This workflow compiles TFQ and runs all test cases, to verify everything
+# works. Unlike the CI checks invoked on PRs and similar events, this workflow
+# builds everything without caching and runs the full test suite, including
+# "eternal" tests that take a long time to run. It is meant to guard against
+# failures that might be missed when skipping the long-running tests or using
+# caching to speed up the CI runs.
+#
+# This workflow also can be invoked manually via the "Run workflow" button at
+# https://github.com/tensorflow/quantum/actions/workflows/ci-build-checks.yaml
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+on:
+  schedule:
+    - cron: '15 6 * * *'
+
+  workflow_dispatch:
+    inputs:
+      py_version:
+        description: "Python version:"
+        type: string
+        default: "3.10.15"
+
+      save_artifacts:
+        description: Make Bazel build outputs downloadable?
+        type: boolean
+        default: true
+
+env:
+  # Default Python version to use.
+  py_version: '3.10.15'
+
+jobs:
+  build-and-test:
+    name: Build TFQ
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out a copy of the TFQ git repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{inputs.py_version || env.py_version}}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{inputs.py_version || env.py_version}}
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@0.9.1
+
+      - name: Build wheel
+        run: |
+          set -x -e
+          which python
+          which pip
+          python -c 'import site; print(site.getsitepackages())'
+          pip install --upgrade pip setuptools wheel
+          # The next script does a pip install, configure, & bazel build.
+          ./scripts/build_pip_package_test.sh
+
+      - name: Test wheel
+        run: |
+          set -x -e
+          ./scripts/run_example.sh
+
+      - name: Run TFQ tests
+        run: |
+          set -x -e
+          ./scripts/test_all.sh 2>&1 | tee test-all.log
+
+      - name: Run tutorial tests
+        run: |
+          set -x -e
+          set -o pipefail
+          cd ..
+          python3 quantum/scripts/test_tutorials.py 2>&1 | \
+            tee quantum/test-tutorials.log
+          exit_code=$?
+          if [ "$exit_code" != "0" ]; then
+            echo "Tutorials failed to run to completion"
+            exit 64;
+          fi
+
+      - if: failure() || inputs.save_artifacts == 'true'
+        name: Make artifacts downloadable
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts
+          retention-days: 7
+          include-hidden-files: true
+          path: |
+            test-all.log
+            test-tutorials.log
+            /home/runner/.bazel/execroot/__main__/bazel-out/
+            !/home/runner/.bazel/execroot/__main__/bazel-out/**/*.so
+            !/home/runner/.bazel/execroot/__main__/bazel-out/**/*.o
+            !/home/runner/.bazel/execroot/__main__/bazel-out/**/_objs
+            !/home/runner/.bazel/execroot/__main__/bazel-out/**/_solib_k8
