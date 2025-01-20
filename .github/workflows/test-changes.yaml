@@ -70,10 +70,8 @@ env:
     build --verbose_failures
     build --auto_output_filter=none
     build --show_progress_rate_limit=1
-    test --test_summary=detailed
     test --test_output=errors
-    test --test_timeout=6000
-    test --test_verbose_timeout_warnings
+    test --test_summary=detailed
 
   # Note: these regexes are Bash regex syntax, NOT path glob syntax.
   # Also, do not put dashes in front of the values.
@@ -271,9 +269,7 @@ jobs:
         # Note that we don't need to set the Bazel version to use, because it
         # knows to use what's in the .bazel-version file.
         with:
-          bazelrc: |
-            ${{env.bazelrc_additions}}
-            ${{inputs.extra_bazel_options}}
+          bazelrc: ${{env.bazelrc_additions}}
           # The next 3 caches can be shared between all workflow runs.
           bazelisk-cache: true
           external-cache: true
@@ -284,7 +280,8 @@ jobs:
         run: |
           set -x -e
           printf "Y\n" | ./configure.sh
-          bazel build release:build_pip_package 2>&1 | tee bazel-build.log
+          bazel build ${{inputs.extra_bazel_options}} \
+            release:build_pip_package 2>&1 | tee bazel-build.log
           mkdir -p ./wheel
           ./bazel-bin/release/build_pip_package "$(pwd)/wheel" 2>&1 | tee python-bdist.log
           pip install -U ./wheel/*.whl
@@ -372,9 +369,7 @@ jobs:
       - name: Set up Bazel
         uses: bazel-contrib/setup-bazel@0.12.0
         with:
-          bazelrc: |
-            ${{env.bazelrc_additions}}
-            ${{inputs.extra_bazel_options}}
+          bazelrc: ${{env.bazelrc_additions}}
           bazelisk-cache: true
           external-cache: true
           repository-cache: true
@@ -384,9 +379,10 @@ jobs:
         id: test
         run: |
           set -x -e
-          set -o pipefail
           printf "Y\n" | ./configure.sh
-          bazel test //tensorflow_quantum/... 2>&1 | tee bazel-tests.log
+          set -o pipefail
+          bazel test ${{inputs.extra_bazel_options}} \
+            //tensorflow_quantum/... 2>&1 | tee bazel-tests.log
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
       - if: failure() || needs.Setup.outputs.debug == 'true'
@@ -478,9 +474,7 @@ jobs:
       - name: Set up Bazel
         uses: bazel-contrib/setup-bazel@0.12.0
         with:
-          bazelrc: |
-            ${{env.bazelrc_additions}}
-            ${{inputs.extra_bazel_options}}
+          bazelrc: ${{env.bazelrc_additions}}
           bazelisk-cache: true
           external-cache: true
           repository-cache: true
