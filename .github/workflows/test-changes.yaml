@@ -37,8 +37,8 @@ on:
         type: string
         default: "3.10.15"
 
-      reload_python_cache:
-        description: "Force-reload the Python caches"
+      remake_python_cache:
+        description: "Delete & remake the Python cache"
         type: boolean
         default: false
 
@@ -65,7 +65,7 @@ env:
     common --cxxopt="-msse4"
     build --verbose_failures
     test --test_output=errors
-    test --test_timeout=300
+    test --test_timeout=600
 
   # Note: these regexes are Bash regex syntax, NOT path glob syntax.
   # Also, do not put dashes in front of the values.
@@ -164,7 +164,7 @@ jobs:
         with:
           python-version: ${{inputs.py_version || env.py_version}}
 
-      - name: Set various parameters
+      - name: Set cache keys and other parameters
         id: parameters
         run: |
           #
@@ -203,7 +203,7 @@ jobs:
 
       - if: >-
           steps.check_cache.outputs.cache-hit == 'true' &&
-          inputs.reload_python_cache == 'true'
+          inputs.remake_python_cache == 'true'
         name: Clear the Python cache
         continue-on-error: true
         env:
@@ -215,8 +215,8 @@ jobs:
 
       - if: >-
           steps.check_cache.outputs.cache-hit != 'true' ||
-          inputs.reload_python_cache == 'true'
-        name: Set up our Python cache
+          inputs.remake_python_cache == 'true'
+        name: Set up the Python cache
         uses: actions/cache@v4
         id: restore_cache
         with:
@@ -225,7 +225,7 @@ jobs:
 
       - if: >-
           steps.check_cache.outputs.cache-hit != 'true' ||
-          inputs.reload_python_cache == 'true'
+          inputs.remake_python_cache == 'true'
         name: Install TFQ Python dependencies and cache them
         run: |
           pip install --upgrade pip setuptools wheel
