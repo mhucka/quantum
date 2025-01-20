@@ -59,6 +59,13 @@ jobs:
           pip install --upgrade pip setuptools wheel
           # The next script does a pip install, configure, & bazel build.
           ./scripts/build_pip_package_test.sh
+          # The next ones are for validating tutorials
+          pip install jupyter
+          pip install nbclient==0.6.5 jupyter-client==6.1.12 ipython==7.22.0
+          pip install ipykernel==5.1.1
+          pip install gym==0.24.1
+          pip install seaborn==0.12.0
+          pip install -q git+https://github.com/tensorflow/docs
 
       - name: Test wheel
         run: |
