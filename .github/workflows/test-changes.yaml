@@ -64,8 +64,12 @@ env:
     common --cxxopt="-msse3"
     common --cxxopt="-msse4"
     build --verbose_failures
+    build --auto_output_filter=none
+    build --show_progress_rate_limit=1
+    test --test_summary=detailed
     test --test_output=errors
     test --test_timeout=600
+    test --test_verbose_timeout_warnings
 
   # Note: these regexes are Bash regex syntax, NOT path glob syntax.
   # Also, do not put dashes in front of the values.
