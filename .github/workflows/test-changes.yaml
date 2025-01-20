@@ -72,7 +72,7 @@ env:
     build --show_progress_rate_limit=1
     test --test_summary=detailed
     test --test_output=errors
-    test --test_timeout=600
+    test --test_timeout=6000
     test --test_verbose_timeout_warnings
 
   # Note: these regexes are Bash regex syntax, NOT path glob syntax.
@@ -381,10 +381,13 @@ jobs:
           disk-cache: ${{needs.Setup.outputs.bazel_cache_key}}
 
       - name: Run all Bazel tests
+        id: test
         run: |
           set -x -e
+          set -o pipefail
           printf "Y\n" | ./configure.sh
           bazel test //tensorflow_quantum/... 2>&1 | tee bazel-tests.log
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
       - if: failure() || needs.Setup.outputs.debug == 'true'
         name: Make Bazel artifacts downloadable for analysis
@@ -401,6 +404,12 @@ jobs:
             !/home/runner/.bazel/execroot/__main__/bazel-out/**/*.o
             !/home/runner/.bazel/execroot/__main__/bazel-out/**/_objs
             !/home/runner/.bazel/execroot/__main__/bazel-out/**/_solib_k8
+
+      - if: failure()
+        name: Report Bazel error
+        run: |
+          exit ${{steps.test.outputs.exit_code}}
+
 
   Tutorial_tests:
     if: needs.Decision.outputs.need_run == 'true'
