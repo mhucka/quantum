@@ -37,6 +37,10 @@ on:
         type: string
         default: "3.10.15"
 
+      extra_bazel_options:
+        description: "Extra Bazel options:"
+        type: string
+
       remake_python_cache:
         description: "Delete & remake the Python cache"
         type: boolean
@@ -267,7 +271,9 @@ jobs:
         # Note that we don't need to set the Bazel version to use, because it
         # knows to use what's in the .bazel-version file.
         with:
-          bazelrc: ${{env.bazelrc_additions}}
+          bazelrc: |
+            ${{env.bazelrc_additions}}
+            ${{inputs.extra_bazel_options}}
           # The next 3 caches can be shared between all workflow runs.
           bazelisk-cache: true
           external-cache: true
@@ -366,7 +372,9 @@ jobs:
       - name: Set up Bazel
         uses: bazel-contrib/setup-bazel@0.12.0
         with:
-          bazelrc: ${{env.bazelrc_additions}}
+          bazelrc: |
+            ${{env.bazelrc_additions}}
+            ${{inputs.extra_bazel_options}}
           bazelisk-cache: true
           external-cache: true
           repository-cache: true
@@ -461,7 +469,9 @@ jobs:
       - name: Set up Bazel
         uses: bazel-contrib/setup-bazel@0.12.0
         with:
-          bazelrc: ${{env.bazelrc_additions}}
+          bazelrc: |
+            ${{env.bazelrc_additions}}
+            ${{inputs.extra_bazel_options}}
           bazelisk-cache: true
           external-cache: true
           repository-cache: true
