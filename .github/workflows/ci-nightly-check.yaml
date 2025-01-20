@@ -11,6 +11,9 @@
 # https://github.com/tensorflow/quantum/actions/workflows/ci-build-checks.yaml
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+name: CI nightly test
+run-name: Continuous integration nightly build & test
+
 on:
   schedule:
     - cron: '15 6 * * *'
