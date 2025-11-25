@@ -59,21 +59,32 @@ jobs:
 
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - name: Remove some unnecessary software to free up disk space
+        run: |
+          set -x
+          df -h
+          mkdir empty_dir
+          sudo rsync -a --delete empty_dir/ /usr/share/dotnet/
+          sudo rsync -a --delete empty_dir/ /usr/local/lib/android/
+          sudo rm -rf empty_dir /usr/share/dotnet /usr/local/lib/android
+          df -h
+
       # - name: Remove some unnecessary software to free up disk space
       #   run: |
       #     set -x
       #     df -h
       #     time sudo rm -rf /usr/share/dotnet /usr/local/lib/android
       #     df -h
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          android: true
-          dotnet: true
-          haskell: false
-          large-packages: false
-          docker-images: false
-          swap-storage: false
+
+      # - name: Free Disk Space (Ubuntu)
+      #   uses: jlumbroso/free-disk-space@main
+      #   with:
+      #     android: true
+      #     dotnet: true
+      #     haskell: false
+      #     large-packages: false
+      #     docker-images: false
+      #     swap-storage: false
 
       - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v5
         with:
