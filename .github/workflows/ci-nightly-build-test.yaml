@@ -101,6 +101,10 @@ jobs:
       - name: Check out a copy of the TFQ git repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
+      - name: Remove some unnecessary software to free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android &
+
       - name: Set up Python ${{inputs.py_version || env.py_version}}
         uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5
         with:
