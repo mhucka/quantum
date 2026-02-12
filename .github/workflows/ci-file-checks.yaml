@@ -90,12 +90,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      python: ${{steps.filter.outputs.python}}
-      python_files: ${{steps.filter.outputs.python_files}}
-      cc: ${{steps.filter.outputs.cc}}
-      cc_files: ${{steps.filter.outputs.cc_files}}
-      yaml: ${{steps.filter.outputs.yaml}}
-      yaml_files: ${{steps.filter.outputs.yaml_files}}
+      python: ${{steps.filter.outputs.python_any_changed}}
+      python_files: ${{steps.filter.outputs.python_all_changed_files}}
+      cc: ${{steps.filter.outputs.cc_any_changed}}
+      cc_files: ${{steps.filter.outputs.cc_all_changed_files}}
+      yaml: ${{steps.filter.outputs.yaml_any_changed}}
+      yaml_files: ${{steps.filter.outputs.yaml_all_changed_files}}
     steps:
       # When invoked manually, use the given SHA to figure out the change list.
       - if: github.event_name == 'workflow_dispatch'
@@ -118,34 +118,33 @@ jobs:
             exit 1
           fi
 
-      - if: github.event_name != 'workflow_dispatch'
-        name: Use ref ${{github.ref_name}} as the basis for comparison
-        run: |
-          echo base=${{github.ref_name}} >> "$GITHUB_ENV"
-
       - name: Check out a copy of the TFQ git repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0  # Required for changed-files action to work correctly
 
       - name: Determine files changed by this ${{github.event_name}} event
-        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
+        uses: tj-actions/changed-files@8cba46e29c11878d930bca7870bb54394d3e8b21 # v47.0.2
         id: filter
         with:
-          base: ${{env.base}}
-          list-files: 'shell'
-          # The outputs will be variables named "foo_files" for a filter "foo".
-          filters: |
+          # Only set base_sha if it was explicitly calculated (e.g. for workflow_dispatch).
+          # Otherwise, let the action determine the base automatically.
+          base_sha: ${{env.base}}
+          # Match behavior of dorny/paths-filter: only include added, copied, modified, renamed files.
+          # Exclude deleted (D) files so tools don't fail on missing files.
+          diff_relative: true
+          # The output list should be space-separated to match the subsequent steps usage.
+          separator: " "
+          files_yaml: |
             python:
-              - added|modified:
-                  - '**/*.py'
+              - '**/*.py'
             cc:
-              - added|modified:
-                  - '**/*.cc'
-                  - '**/*.h'
-                  - '**/*.proto'
+              - '**/*.cc'
+              - '**/*.h'
+              - '**/*.proto'
             yaml:
-              - added|modified:
-                  - '**/*.yaml'
-                  - '**/*.yml'
+              - '**/*.yaml'
+              - '**/*.yml'
 
   Setup:
     if: needs.Changes.outputs.python == 'true'
