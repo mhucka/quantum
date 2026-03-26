@@ -971,7 +971,7 @@ def _process_pauli_type(char):
         return cirq.X
     if char == 'Y':
         return cirq.Y
-    raise ValueError("Invalid pauli type.")
+    raise ValueError(f"Invalid pauli type: {char}.")
 
 
 def serialize_projectorsum(projectorsum):
