@@ -250,7 +250,7 @@ class PQC(tf.keras.layers.Layer):
             raise ValueError("Repetitions must be greater than zero.")
         if not self._analytic:
             self._repetitions = tf.constant(
-                [[repetitions for _ in range(len(operators))]],
+                [[repetitions] * len(operators)],
                 dtype=tf.dtypes.int32)
 
         # Set backend and differentiator.
