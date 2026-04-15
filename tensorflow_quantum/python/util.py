@@ -768,7 +768,7 @@ def exponential(operators, coefficients=None):
 
     # Ingest coefficients.
     if coefficients is None:
-        coefficients = [1.0 for _ in operators]
+        coefficients = [1.0] * len(operators)
 
     if not isinstance(coefficients, (list, tuple, np.ndarray)):
         raise TypeError("coefficients is not a list of coefficients.")
