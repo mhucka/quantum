@@ -206,7 +206,7 @@ class ControlledPQC(tf.keras.layers.Layer):
 
         if not self._analytic:
             self._repetitions = tf.constant(
-                [[repetitions for _ in range(len(operators))]],
+                [[repetitions] * len(operators)],
                 dtype=tf.dtypes.int32)
 
         # Ingest backend and differentiator.
