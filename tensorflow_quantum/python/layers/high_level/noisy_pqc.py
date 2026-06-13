@@ -217,7 +217,7 @@ class NoisyPQC(tf.keras.layers.Layer):
             raise ValueError("Repetitions must be greater than zero.")
 
         self._repetitions = tf.constant(
-            [[repetitions] * len(operators)],
+            repetitions, shape=[1, len(operators)],
             dtype=tf.dtypes.int32)
 
         # Ingest differentiator.
